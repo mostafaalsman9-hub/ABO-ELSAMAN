@@ -1,0 +1,82 @@
+name: ABO ELSAMAN APK Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: App display name
+        required: true
+        default: ABO ELSAMAN
+      website_url:
+        description: Website HTTPS URL
+        required: true
+        default: https://example.com
+      application_id:
+        description: Android package name
+        required: true
+        default: com.aboelsaman.webapp
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Validate inputs
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          WEBSITE_URL: ${{ inputs.website_url }}
+          APP_ID: ${{ inputs.application_id }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from urllib.parse import urlparse
+
+          name = os.environ["APP_NAME"]
+          url = os.environ["WEBSITE_URL"]
+          app_id = os.environ["APP_ID"]
+          parsed = urlparse(url)
+
+          if not name.strip() or '"' in name or '\\' in name:
+              raise SystemExit("Invalid app name")
+          if parsed.scheme != "https" or not parsed.netloc:
+              raise SystemExit("A valid HTTPS URL is required")
+          if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+", app_id):
+              raise SystemExit("Invalid Android package name")
+          print("Inputs validated")
+
+          PY
+
+      - name: Build APK
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          WEBSITE_URL: ${{ inputs.website_url }}
+          APP_ID: ${{ inputs.application_id }}
+        run: |
+          gradle --no-daemon \
+            -PappName="$APP_NAME" \
+            -PwebsiteUrl="$WEBSITE_URL" \
+            -PapplicationId="$APP_ID" \
+            :app:assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ABO-ELSAMAN-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

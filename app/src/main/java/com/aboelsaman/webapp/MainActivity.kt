@@ -7,20 +7,27 @@ import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebSettings
 
 class MainActivity : Activity() {
 
     private lateinit var webView: WebView
 
     @Suppress("DEPRECATION")
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        window.decorView.systemUiVisibility =
-            (View.SYSTEM_UI_FLAG_FULLSCREEN
+    private fun hideSystemBars() {
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_FULLSCREEN
             or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
             or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE)
+            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        )
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        hideSystemBars()
 
         webView = WebView(this)
 
@@ -28,7 +35,9 @@ class MainActivity : Activity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
+            loadsImagesAutomatically = true
             javaScriptCanOpenWindowsAutomatically = true
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
 
         CookieManager.getInstance().apply {
@@ -41,10 +50,10 @@ class MainActivity : Activity() {
 
         setContentView(webView)
 
-        if (savedInstanceState == null) {
-            webView.loadUrl(BuildConfig.WEBSITE_URL)
-        } else {
+        if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState)
+        } else {
+            webView.loadUrl(BuildConfig.WEBSITE_URL)
         }
     }
 
@@ -53,7 +62,7 @@ class MainActivity : Activity() {
         super.onSaveInstanceState(outState)
     }
 
-    @Deprecated("Deprecated in Android")
+    @Deprecated("Deprecated in Android API")
     override fun onBackPressed() {
         if (webView.canGoBack()) {
             webView.goBack()
