@@ -1,0 +1,11 @@
+ABO ELSAMAN STUDIO branding patch
+
+Extract the ZIP directly into the project root (~/ABO_ELSAMAN), keeping folder paths.
+Example in Termux, if the ZIP is in Android/Download:
+
+cd ~/ABO_ELSAMAN
+unzip -o /sdcard/Download/ABO_ELSAMAN_branding_patch.zip -d .
+
+git diff --check
+
+Review the changed files before committing and pushing.
