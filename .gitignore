@@ -5,3 +5,12 @@ local.properties
 *.iml
 .idea/
 .DS_Store
+
+# Node.js dependencies
+node_modules/
+
+# Backup files
+*.backup
+
+# Generated APK files
+output/
