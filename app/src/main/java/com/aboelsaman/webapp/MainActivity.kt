@@ -18,6 +18,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.PermissionRequest
 import android.webkit.WebSettings
 import android.widget.Toast
 
@@ -26,10 +27,12 @@ class MainActivity : Activity() {
     private lateinit var webView: WebView
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var pendingDownload: (() -> Unit)? = null
+    private var pendingWebPermission: PermissionRequest? = null
 
     companion object {
         private const val FILE_REQUEST = 1001
         private const val STORAGE_REQUEST = 1002
+        private const val WEB_PERMISSION_REQUEST = 1003
     }
 
     @Suppress("DEPRECATION")
@@ -67,6 +70,54 @@ class MainActivity : Activity() {
         webView.webViewClient = WebViewClient()
 
         webView.webChromeClient = object : WebChromeClient() {
+
+            override fun onPermissionRequest(request: PermissionRequest) {
+                runOnUiThread {
+                    if (!isTrustedOrigin(request.origin)) {
+                        request.deny()
+                        return@runOnUiThread
+                    }
+
+                    val resources = request.resources.filter {
+                        it == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
+                        it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                    }
+
+                    if (resources.isEmpty() || resources.size != request.resources.size) {
+                        request.deny()
+                        return@runOnUiThread
+                    }
+
+                    val needed = mutableListOf<String>()
+                    if (PermissionRequest.RESOURCE_VIDEO_CAPTURE in resources) {
+                        needed.add(Manifest.permission.CAMERA)
+                    }
+                    if (PermissionRequest.RESOURCE_AUDIO_CAPTURE in resources) {
+                        needed.add(Manifest.permission.RECORD_AUDIO)
+                    }
+
+                    val missing = needed.filter {
+                        checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+                    }
+
+                    if (missing.isEmpty()) {
+                        request.grant(resources.toTypedArray())
+                    } else {
+                        pendingWebPermission?.deny()
+                        pendingWebPermission = request
+                        requestPermissions(
+                            missing.toTypedArray(),
+                            WEB_PERMISSION_REQUEST
+                        )
+                    }
+                }
+            }
+
+            override fun onPermissionRequestCanceled(request: PermissionRequest) {
+                if (pendingWebPermission == request) {
+                    pendingWebPermission = null
+                }
+            }
             override fun onShowFileChooser(
                 webView: WebView?,
                 callback: ValueCallback<Array<Uri>>?,
@@ -123,6 +174,13 @@ class MainActivity : Activity() {
         } else {
             webView.loadUrl(BuildConfig.WEBSITE_URL)
         }
+    }
+
+    private fun isTrustedOrigin(origin: Uri): Boolean {
+        val configured = Uri.parse(BuildConfig.WEBSITE_URL)
+        return origin.scheme == configured.scheme &&
+            origin.host.equals(configured.host, ignoreCase = true) &&
+            origin.port == configured.port
     }
 
     private fun startDownload(
@@ -202,7 +260,21 @@ class MainActivity : Activity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-        if (requestCode == STORAGE_REQUEST) {
+        if (requestCode == WEB_PERMISSION_REQUEST) {
+            val request = pendingWebPermission
+            pendingWebPermission = null
+
+            if (request != null) {
+                val granted = grantResults.isNotEmpty() &&
+                    grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+
+                if (granted && isTrustedOrigin(request.origin)) {
+                    request.grant(request.resources)
+                } else {
+                    request.deny()
+                }
+            }
+        } else if (requestCode == STORAGE_REQUEST) {
             if (grantResults.isNotEmpty() &&
                 grantResults[0] == PackageManager.PERMISSION_GRANTED
             ) {
@@ -231,6 +303,8 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         fileCallback?.onReceiveValue(null)
         fileCallback = null
+        pendingWebPermission?.deny()
+        pendingWebPermission = null
         webView.destroy()
         super.onDestroy()
     }
