@@ -44,7 +44,8 @@ jobs:
           APP_ID: ${{ inputs.application_id }}
         run: |
           python3 - <<'PY'
-          import os, re
+          import os
+          import re
           from urllib.parse import urlparse
 
           name = os.environ["APP_NAME"]
@@ -52,14 +53,22 @@ jobs:
           app_id = os.environ["APP_ID"]
           parsed = urlparse(url)
 
-          if not name.strip() or '"' in name or '\\' in name:
+          if not name.strip() or len(name) > 50:
               raise SystemExit("Invalid app name")
-          if parsed.scheme != "https" or not parsed.netloc:
-              raise SystemExit("A valid HTTPS URL is required")
-          if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+", app_id):
-              raise SystemExit("Invalid Android package name")
-          print("Inputs validated")
 
+          if '"' in name or '\\' in name or any(ord(c) < 32 for c in name):
+              raise SystemExit("Invalid characters in app name")
+
+          if parsed.scheme != "https" or not parsed.hostname:
+              raise SystemExit("A valid HTTPS URL is required")
+
+          if not re.fullmatch(
+              r"[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+",
+              app_id
+          ):
+              raise SystemExit("Invalid Android package name")
+
+          print("Inputs validated")
           PY
 
       - name: Build APK
