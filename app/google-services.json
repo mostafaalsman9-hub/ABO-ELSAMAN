@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "506967434328",
+    "project_id": "college-system-3d6f4",
+    "storage_bucket": "college-system-3d6f4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:506967434328:android:ebc3debffaf965cb0b962d",
+        "android_client_info": {
+          "package_name": "com.aboelsaman.webapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAf6q-47SXCQ2D5F5-2qDzkNDpuOELsmlc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
