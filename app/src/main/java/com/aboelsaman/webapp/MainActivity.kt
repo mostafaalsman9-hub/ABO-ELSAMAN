@@ -1,311 +1,269 @@
 package com.aboelsaman.webapp
 
-import android.Manifest
 import android.app.Activity
-import android.app.DownloadManager
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.os.Environment
-import android.provider.OpenableColumns
+import android.graphics.Color
+import android.view.Gravity
 import android.view.View
-import android.webkit.CookieManager
-import android.webkit.URLUtil
-import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.webkit.PermissionRequest
-import android.webkit.WebSettings
-import android.widget.Toast
+import android.widget.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.android.gms.tasks.Tasks
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
 
-    private lateinit var webView: WebView
-    private var fileCallback: ValueCallback<Array<Uri>>? = null
-    private var pendingDownload: (() -> Unit)? = null
-    private var pendingWebPermission: PermissionRequest? = null
+    private lateinit var auth: FirebaseAuth
+    private lateinit var content: LinearLayout
+    private lateinit var status: TextView
 
-    companion object {
-        private const val FILE_REQUEST = 1001
-        private const val STORAGE_REQUEST = 1002
-        private const val WEB_PERMISSION_REQUEST = 1003
-    }
+    private val apiUrl =
+        "https://abo-elsaman.mostafaalsaman12.workers.dev/create"
 
-    @Suppress("DEPRECATION")
-    private fun hideSystemBars() {
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-        )
-    }
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hideSystemBars()
 
-        webView = WebView(this)
+        auth = FirebaseAuth.getInstance()
+        showScreen()
+    }
 
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            loadsImagesAutomatically = true
-            javaScriptCanOpenWindowsAutomatically = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+    private fun showScreen() {
+        val scroll = ScrollView(this)
+        content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(30), dp(24), dp(30))
+            setBackgroundColor(Color.rgb(13, 20, 35))
         }
 
-        CookieManager.getInstance().apply {
-            setAcceptCookie(true)
-            setAcceptThirdPartyCookies(webView, true)
+        scroll.addView(content)
+        setContentView(scroll)
+
+        text("ABO ELSAMAN", 30, Color.WHITE, true)
+        text("STUDIO", 17, Color.rgb(0, 210, 190), true)
+        text("مصنع التطبيقات الذكي", 22, Color.WHITE, true)
+
+        status = text("", 14, Color.LTGRAY)
+
+        if (auth.currentUser == null) {
+            showLogin()
+        } else {
+            showFactory()
         }
+    }
 
-        webView.webViewClient = WebViewClient()
+    private fun text(
+        value: String,
+        size: Int,
+        color: Int,
+        bold: Boolean = false
+    ): TextView {
+        return TextView(this).apply {
+            text = value
+            textSize = size.toFloat()
+            setTextColor(color)
+            if (bold) setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, dp(10))
+            content.addView(
+                this,
+                LinearLayout.LayoutParams(-1, -2)
+            )
+        }
+    }
 
-        webView.webChromeClient = object : WebChromeClient() {
+    private fun input(hint: String): EditText {
+        return EditText(this).apply {
+            this.hint = hint
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setSingleLine(true)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setBackgroundColor(Color.rgb(35, 45, 65))
+            content.addView(
+                this,
+                LinearLayout.LayoutParams(-1, dp(55)).apply {
+                    bottomMargin = dp(12)
+                }
+            )
+        }
+    }
 
-            override fun onPermissionRequest(request: PermissionRequest) {
-                runOnUiThread {
-                    if (!isTrustedOrigin(request.origin)) {
-                        request.deny()
-                        return@runOnUiThread
-                    }
+    private fun button(label: String, action: () -> Unit) {
+        Button(this).apply {
+            text = label
+            textSize = 16f
+            setOnClickListener { action() }
+            content.addView(
+                this,
+                LinearLayout.LayoutParams(-1, dp(55)).apply {
+                    bottomMargin = dp(12)
+                }
+            )
+        }
+    }
 
-                    val resources = request.resources.filter {
-                        it == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
-                        it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
-                    }
+    private fun showLogin() {
+        text("سجّل الدخول للبدء", 18, Color.WHITE, true)
 
-                    if (resources.isEmpty() || resources.size != request.resources.size) {
-                        request.deny()
-                        return@runOnUiThread
-                    }
+        val email = input("البريد الإلكتروني")
+        val password = input("كلمة المرور")
+        password.inputType =
+            android.text.InputType.TYPE_CLASS_TEXT or
+            android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
 
-                    val needed = mutableListOf<String>()
-                    if (PermissionRequest.RESOURCE_VIDEO_CAPTURE in resources) {
-                        needed.add(Manifest.permission.CAMERA)
-                    }
-                    if (PermissionRequest.RESOURCE_AUDIO_CAPTURE in resources) {
-                        needed.add(Manifest.permission.RECORD_AUDIO)
-                    }
+        button("تسجيل الدخول") {
+            val e = email.text.toString().trim()
+            val p = password.text.toString()
 
-                    val missing = needed.filter {
-                        checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
-                    }
+            if (e.isEmpty() || p.isEmpty()) {
+                status.text = "أدخل البريد وكلمة المرور"
+                return@button
+            }
 
-                    if (missing.isEmpty()) {
-                        request.grant(resources.toTypedArray())
+            status.text = "جاري تسجيل الدخول..."
+
+            auth.signInWithEmailAndPassword(e, p)
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        showScreen()
                     } else {
-                        pendingWebPermission?.deny()
-                        pendingWebPermission = request
-                        requestPermissions(
-                            missing.toTypedArray(),
-                            WEB_PERMISSION_REQUEST
-                        )
+                        status.text =
+                            task.exception?.localizedMessage ?: "فشل تسجيل الدخول"
                     }
                 }
+        }
+
+        button("إنشاء حساب جديد") {
+            val e = email.text.toString().trim()
+            val p = password.text.toString()
+
+            if (e.isEmpty() || p.length < 6) {
+                status.text = "أدخل بريدًا صحيحًا وكلمة مرور من 6 أحرف على الأقل"
+                return@button
             }
 
-            override fun onPermissionRequestCanceled(request: PermissionRequest) {
-                if (pendingWebPermission == request) {
-                    pendingWebPermission = null
+            status.text = "جاري إنشاء الحساب..."
+
+            auth.createUserWithEmailAndPassword(e, p)
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        showScreen()
+                    } else {
+                        status.text =
+                            task.exception?.localizedMessage ?: "فشل إنشاء الحساب"
+                    }
                 }
+        }
+    }
+
+    private fun showFactory() {
+        text("مرحبًا بك في المصنع", 19, Color.WHITE, true)
+        text("أنشئ تطبيق Android من أي موقع HTTPS", 15, Color.LTGRAY)
+
+        val appName = input("اسم التطبيق")
+        val website = input("رابط الموقع HTTPS")
+        val packageId = input("معرّف التطبيق مثال: com.example.app")
+
+        button("إنشاء التطبيق") {
+            val name = appName.text.toString().trim()
+            val site = website.text.toString().trim()
+            val appId = packageId.text.toString().trim()
+
+            if (name.isEmpty() || site.isEmpty() || appId.isEmpty()) {
+                status.text = "أكمل جميع البيانات أولاً"
+                return@button
             }
-            override fun onShowFileChooser(
-                webView: WebView?,
-                callback: ValueCallback<Array<Uri>>?,
-                params: FileChooserParams?
-            ): Boolean {
-                fileCallback?.onReceiveValue(null)
-                fileCallback = callback
 
-                return try {
-                    val intent = params?.createIntent()
-                        ?: Intent(Intent.ACTION_GET_CONTENT).apply {
-                            type = "*/*"
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                        }
+            if (!site.startsWith("https://")) {
+                status.text = "رابط الموقع يجب أن يبدأ بـ https://"
+                return@button
+            }
 
-                    startActivityForResult(intent, FILE_REQUEST)
-                    true
-                } catch (e: Exception) {
-                    fileCallback?.onReceiveValue(null)
-                    fileCallback = null
-                    Toast.makeText(
-                        this@MainActivity,
-                        "تعذر فتح مدير الملفات",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    false
+            submitBuild(name, site, appId)
+        }
+
+        button("تسجيل الخروج") {
+            auth.signOut()
+            showScreen()
+        }
+    }
+
+    private fun submitBuild(
+        name: String,
+        website: String,
+        packageId: String
+    ) {
+        status.text = "جاري إرسال طلب إنشاء التطبيق..."
+
+        thread {
+            var connection: HttpURLConnection? = null
+
+            try {
+                val user = auth.currentUser
+                    ?: throw Exception("يجب تسجيل الدخول أولاً")
+                val token = Tasks.await(user.getIdToken(false)).token
+                    ?: throw Exception("تعذر الحصول على رمز تسجيل الدخول")
+
+                connection = (URL(apiUrl).openConnection() as HttpURLConnection)
+                connection.requestMethod = "POST"
+                connection.connectTimeout = 20000
+                connection.readTimeout = 20000
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("Authorization", "Bearer $token")
+
+                val body = JSONObject().apply {
+                    put("app_name", name)
+                    put("website_url", website)
+                    put("application_id", packageId)
                 }
-            }
-        }
 
-        webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-            val downloadAction = {
-                startDownload(url, userAgent, contentDisposition, mimeType)
-            }
+                connection.outputStream.use {
+                    it.write(body.toString().toByteArray(Charsets.UTF_8))
+                }
 
-            if (Build.VERSION.SDK_INT <= 28 &&
-                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                pendingDownload = downloadAction
-                requestPermissions(
-                    arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
-                    STORAGE_REQUEST
-                )
-            } else {
-                downloadAction()
-            }
-        }
-
-        setContentView(webView)
-
-        if (savedInstanceState != null) {
-            webView.restoreState(savedInstanceState)
-        } else {
-            webView.loadUrl(BuildConfig.WEBSITE_URL)
-        }
-    }
-
-    private fun isTrustedOrigin(origin: Uri): Boolean {
-        val configured = Uri.parse(BuildConfig.WEBSITE_URL)
-        return origin.scheme == configured.scheme &&
-            origin.host.equals(configured.host, ignoreCase = true) &&
-            origin.port == configured.port
-    }
-
-    private fun startDownload(
-        url: String,
-        userAgent: String,
-        contentDisposition: String?,
-        mimeType: String?
-    ) {
-        try {
-            val uri = Uri.parse(url)
-
-            if (uri.scheme != "https" && uri.scheme != "http") {
-                Toast.makeText(this, "رابط التنزيل غير مدعوم", Toast.LENGTH_LONG).show()
-                return
-            }
-
-            val request = DownloadManager.Request(uri)
-            val cookies = CookieManager.getInstance().getCookie(url)
-
-            if (!cookies.isNullOrEmpty()) {
-                request.addRequestHeader("Cookie", cookies)
-            }
-
-            if (userAgent.isNotEmpty()) {
-                request.addRequestHeader("User-Agent", userAgent)
-            }
-
-            request.setMimeType(mimeType)
-            request.setTitle(
-                URLUtil.guessFileName(url, contentDisposition, mimeType)
-            )
-            request.setDescription("جاري تنزيل الملف")
-            request.setNotificationVisibility(
-                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
-            )
-            request.setDestinationInExternalPublicDir(
-                Environment.DIRECTORY_DOWNLOADS,
-                URLUtil.guessFileName(url, contentDisposition, mimeType)
-            )
-
-            val manager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            manager.enqueue(request)
-
-            Toast.makeText(this, "بدأ تنزيل الملف", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "تعذر بدء التنزيل", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    @Deprecated("Deprecated in Android API")
-    override fun onActivityResult(
-        requestCode: Int,
-        resultCode: Int,
-        data: Intent?
-    ) {
-        super.onActivityResult(requestCode, resultCode, data)
-
-        if (requestCode == FILE_REQUEST) {
-            val result = if (resultCode == RESULT_OK) {
-                data?.clipData?.let { clip ->
-                    Array(clip.itemCount) { i -> clip.getItemAt(i).uri }
-                } ?: data?.data?.let { arrayOf(it) }
-            } else {
-                null
-            }
-
-            fileCallback?.onReceiveValue(result)
-            fileCallback = null
-        }
-    }
-
-    @Deprecated("Deprecated in Android API")
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (requestCode == WEB_PERMISSION_REQUEST) {
-            val request = pendingWebPermission
-            pendingWebPermission = null
-
-            if (request != null) {
-                val granted = grantResults.isNotEmpty() &&
-                    grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-
-                if (granted && isTrustedOrigin(request.origin)) {
-                    request.grant(request.resources)
+                val code = connection.responseCode
+                val stream = if (code in 200..299) {
+                    connection.inputStream
                 } else {
-                    request.deny()
+                    connection.errorStream
                 }
+
+                val result = stream?.bufferedReader()?.use {
+                    it.readText()
+                } ?: ""
+
+                val message = try {
+                    JSONObject(result).optString(
+                        "message",
+                        JSONObject(result).optString("error", result)
+                    )
+                } catch (_: Exception) {
+                    result
+                }
+
+                runOnUiThread {
+                    status.text = if (code == 200) {
+                        "✅ $message"
+                    } else {
+                        "❌ $message"
+                    }
+                }
+
+            } catch (e: Exception) {
+                runOnUiThread {
+                    status.text =
+                        "حدث خطأ: ${e.localizedMessage ?: "تعذر الاتصال"}"
+                }
+            } finally {
+                connection?.disconnect()
             }
-        } else if (requestCode == STORAGE_REQUEST) {
-            if (grantResults.isNotEmpty() &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED
-            ) {
-                pendingDownload?.invoke()
-            } else {
-                Toast.makeText(this, "لم يتم السماح بالتخزين", Toast.LENGTH_SHORT).show()
-            }
-            pendingDownload = null
         }
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        webView.saveState(outState)
-        super.onSaveInstanceState(outState)
-    }
-
-    @Deprecated("Deprecated in Android API")
-    override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
-        }
-    }
-
-    override fun onDestroy() {
-        fileCallback?.onReceiveValue(null)
-        fileCallback = null
-        pendingWebPermission?.deny()
-        pendingWebPermission = null
-        webView.destroy()
-        super.onDestroy()
     }
 }
